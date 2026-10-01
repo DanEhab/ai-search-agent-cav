@@ -1,7 +1,11 @@
 package tests;
 
 import code.CaveMap;
+import code.State;
 import org.junit.jupiter.api.Test;
+
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -200,4 +204,144 @@ public class ModelTests {
         assertTrue(shown.contains("doors: (3,2)"));
         assertTrue(shown.contains("keys: (1,0)"));
     }
-}
+
+    // ---------------------------------------------------------------- states
+
+    // a normal state to compare against: standing at (1,1) with a bit of everything left
+    private static State sampleState() {
+        return new State(1, 1, 88, 2, 3, false, 1, 1);
+    }
+
+    @Test
+    public void startStateOfThePdfExample() {
+        State start = State.initial(new CaveMap(PDF_EXAMPLE));
+
+        assertEquals(0, start.x);
+        assertEquals(1, start.y);
+        assertEquals(100, start.energy);
+        assertEquals(2, start.rope);
+        assertEquals(3, start.lives);
+        assertFalse(start.holdingKey);
+        assertEquals(1, start.keysOnFloor);   // one key, still on the floor
+        assertEquals(1, start.doorsLocked);   // one door, still locked
+    }
+
+    @Test
+    public void startStateHasOneBitPerKeyAndDoor() {
+        // this cave has 3 keys and 2 doors
+        State start = State.initial(new CaveMap(PUBLIC_CAVES[6]));
+
+        assertEquals(7, start.keysOnFloor);   // binary 111
+        assertEquals(3, start.doorsLocked);   // binary 11
+    }
+
+    @Test
+    public void startStateIsRightForEveryPublicCave() {
+        for (String text : PUBLIC_CAVES) {
+            CaveMap cave = new CaveMap(text);
+            State start = State.initial(cave);
+
+            assertEquals(cave.startX, start.x, text);
+            assertEquals(cave.startY, start.y, text);
+            assertEquals(cave.energy, start.energy, text);
+            assertEquals(cave.rope, start.rope, text);
+            assertEquals(3, start.lives, text);
+            assertFalse(start.holdingKey, text);
+            // one bit for every key and every door
+            assertEquals(cave.keys.length, Integer.bitCount(start.keysOnFloor), text);
+            assertEquals(cave.doors.length, Integer.bitCount(start.doorsLocked), text);
+        }
+    }
+
+    @Test
+    public void bitsTellWhichKeysAndDoorsAreLeft() {
+        // keys 0 and 2 are still on the floor and key 1 is gone. Only door 1 is still locked.
+        State s = new State(0, 0, 10, 0, 3, false, 5, 2);
+
+        assertTrue(s.keyOnFloor(0));
+        assertFalse(s.keyOnFloor(1));
+        assertTrue(s.keyOnFloor(2));
+        assertFalse(s.doorLocked(0));
+        assertTrue(s.doorLocked(1));
+    }
+
+    @Test
+    public void sameNumbersMakeEqualStates() {
+        State a = sampleState();
+        State b = sampleState();
+
+        assertEquals(a, a);
+        assertEquals(a, b);
+        assertEquals(a.hashCode(), b.hashCode());
+        assertNotEquals(a, null);
+        assertNotEquals(a, "not a state");
+    }
+
+    @Test
+    public void changingAnySingleNumberMakesADifferentState() {
+        State base = sampleState();
+
+        assertNotEquals(base, new State(2, 1, 88, 2, 3, false, 1, 1));   // x
+        assertNotEquals(base, new State(1, 2, 88, 2, 3, false, 1, 1));   // y
+        assertNotEquals(base, new State(1, 1, 87, 2, 3, false, 1, 1));   // energy
+        assertNotEquals(base, new State(1, 1, 88, 1, 3, false, 1, 1));   // rope
+        assertNotEquals(base, new State(1, 1, 88, 2, 2, false, 1, 1));   // lives
+        assertNotEquals(base, new State(1, 1, 88, 2, 3, true, 1, 1));    // key in hand
+        assertNotEquals(base, new State(1, 1, 88, 2, 3, false, 0, 1));   // keys on the floor
+        assertNotEquals(base, new State(1, 1, 88, 2, 3, false, 1, 0));   // doors locked
+    }
+
+    @Test
+    public void sameCaveWithDifferentRopeAndKeyIsADifferentSituation() {
+        // both are the explorer standing in cave (1,1) of the PDF example,
+        // once after step 1 (right) and once after step 4 (climbdown)
+        State afterStep1 = new State(1, 1, 88, 2, 3, false, 1, 1);
+        State afterStep4 = new State(1, 1, 73, 0, 3, true, 0, 1);
+
+        assertNotEquals(afterStep1, afterStep4);
+    }
+
+    @Test
+    public void aHashSetKeepsOnlyOneCopyOfEqualStates() {
+        Set<State> seen = new HashSet<>();
+        seen.add(sampleState());
+        seen.add(sampleState());                           // same numbers again
+        seen.add(new State(1, 1, 88, 1, 3, false, 1, 1));  // one meter less rope
+
+        assertEquals(2, seen.size());
+        assertTrue(seen.contains(new State(1, 1, 88, 2, 3, false, 1, 1)));
+        assertFalse(seen.contains(new State(1, 1, 88, 0, 3, false, 1, 1)));
+    }
+
+    @Test
+    public void hashCodesAreSpreadOutWell() {
+        // The search keeps a huge number of states in a HashSet, so different states should
+        // almost never share a hash code. Try a big block of different states and count.
+        Set<Integer> hashes = new HashSet<>();
+        int total = 0;
+        for (int energy = 0; energy <= 40; energy++) {
+            for (int rope = 0; rope <= 5; rope++) {
+                for (int lives = 1; lives <= 3; lives++) {
+                    for (int cell = 0; cell < 49; cell++) {            // a 7x7 grid of positions
+                        for (int extra = 0; extra < 16; extra++) {     // key in hand, 2 doors, 4 key masks
+                            boolean holdingKey = (extra & 1) == 1;
+                            int doors = (extra >> 1) & 1;
+                            int keys = extra >> 2;
+                            State s = new State(cell % 7, cell / 7, energy, rope, lives, holdingKey, keys, doors);
+                            hashes.add(s.hashCode());
+                            total++;
+                        }
+                    }
+                }
+            }
+        }
+
+        assertTrue(hashes.size() >= total * 0.99,
+                "only " + hashes.size() + " different hash codes for " + total + " different states");
+    }
+
+    @Test
+    public void toStringListsEveryNumber() {
+        assertEquals("State(x=1, y=1, energy=88, rope=2, lives=3, holdingKey=false, keysOnFloor=1, doorsLocked=1)",
+                sampleState().toString());
+    }}
