@@ -1,0 +1,6 @@
+# Compiled class files
+bin/
+*.class
+
+# Ignored PDFs
+Assignment 1 Description.pdf
