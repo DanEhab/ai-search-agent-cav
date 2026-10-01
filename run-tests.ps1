@@ -20,10 +20,14 @@
     Optional. One test to run. For the public tests the short name works (uc1 means test_plan_uc1).
 
 .PARAMETER Class
-    Which test file to use, without .java. The default is PublicTests. Our own tests live in ModelTests.
+    Which test file to use, without .java. The default is PublicTests. Our own tests live in ModelTests and RulesTests.
 
 .PARAMETER All
-    Run every test file in src\tests (cannot be combined with -Test or -Class).
+    Run every test file in src\tests (cannot be combined with -Test, -Class or -Own).
+
+.PARAMETER Own
+    Run all of our own test files, which means every file in src\tests except PublicTests
+    (cannot be combined with -Test, -Class or -All).
 
 .PARAMETER Full
     Also print the long failure details (stack traces) that are hidden by default.
@@ -37,6 +41,8 @@
 .EXAMPLE
     .\run-tests.ps1 -Class ModelTests -Test pdfExampleIsReadCorrectly
 .EXAMPLE
+    .\run-tests.ps1 -Own                         run all of our own tests (not the public ones)
+.EXAMPLE
     .\run-tests.ps1 -All                         run the public tests and our own tests together
 .EXAMPLE
     .\run-tests.ps1 as_cost2 -Full               run one test and show the full failure details
@@ -45,6 +51,7 @@ param(
     [string]$Test = "",
     [string]$Class = "PublicTests",
     [switch]$All,
+    [switch]$Own,
     [switch]$Full
 )
 
@@ -63,13 +70,23 @@ function Invoke-CompileAndTest {
     }
 
     # --- 1. Choose which tests to run (and reject typos before doing any work) ---------------
-    if ($All) {
-        if ($Test -ne "" -or $classWasGiven) {
-            Write-Host "ERROR: -All cannot be combined with -Test or -Class." -ForegroundColor Red
+    if ($All -or $Own) {
+        if ($Test -ne "" -or $classWasGiven -or ($All -and $Own)) {
+            Write-Host "ERROR: -All and -Own cannot be combined with each other, or with -Test or -Class." -ForegroundColor Red
             return 3
         }
-        $selector = @("--select-package", "tests")
-        $what = "every test file in src\tests"
+        if ($All) {
+            $selector = @("--select-package", "tests")
+            $what = "every test file in src\tests"
+        } else {
+            # our own tests are every test file except the public ones
+            $selector = @()
+            $ownFiles = @(Get-ChildItem -Path "src\tests" -Filter "*.java" | Where-Object { $_.BaseName -ne "PublicTests" })
+            foreach ($file in $ownFiles) {
+                $selector += @("--select-class", "tests.$($file.BaseName)")
+            }
+            $what = "our own tests ($(($ownFiles | ForEach-Object { $_.BaseName }) -join ', '))"
+        }
     } else {
         # Look the file up by listing the folder: that gives its real spelling, which matters because
         # Windows ignores letter case in file names but JUnit does not.
