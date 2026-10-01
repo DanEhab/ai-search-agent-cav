@@ -40,10 +40,19 @@ public class CaveExplorer extends GenericSearchProblem {
         return rules.stepCost(before, after);
     }
 
+    // Reads the cave, searches it with the strategy ("UC", "ID" or "AS") and gives back the answer in
+    // the format the assignment wants: plan;lives;energy;nodes. If the cave cannot be won it is "No Solution".
     public static String solve(String initString, String strategy) {
+        Strategy chosen = Strategy.fromText(strategy);
+        CaveExplorer problem = new CaveExplorer(new CaveMap(initString));
+        Search search = new Search();
 
-        return "";
-
+        Node goal = search.run(problem, chosen);
+        if (goal == null) {
+            return "No Solution";
+        }
+        return goal.planText() + ";" + problem.rules.livesUsed(goal.state) + ";"
+                + problem.rules.energyUsed(goal.state) + ";" + search.nodesExpanded();
     }
 
 }
