@@ -19,6 +19,16 @@ public enum Action {
         this.text = text;
     }
 
+    // the action with this name in a plan: "climbup" gives CLIMB_UP
+    public static Action fromText(String text) {
+        for (Action action : values()) {
+            if (action.text.equals(text)) {
+                return action;
+            }
+        }
+        throw new IllegalArgumentException("no action is called \"" + text + "\"");
+    }
+
     @Override
     public String toString() {
         return text;

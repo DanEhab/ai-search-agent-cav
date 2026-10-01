@@ -26,6 +26,19 @@ public class RulesTests {
     private static final String BIG_CAVE =
             "7,8;0,1;120,5;0,3,0,0,8,4,0,2;4,9,5,0,2,0,7,0;0,1,8,8,6,9,6,0;0,2,7,3,4,4,0,2;7,0,1,3,2,0,3,9;7,0,2,6,0,1,4,0;5,0,9,4,4,3,8,5;3,2,5,6;1,0,5,3,0,4;";
 
+    // plans that are known to work, each one for the cave named above it
+    private static final String PDF_PLAN = "right,climbup,collect,climbdown,jumpdown,right,right,unlock";
+
+    // the cave of test_plan_uc_cost1, whose cheapest plan costs 0 lives and 99 energy
+    private static final String FIVE_BY_SIX_CAVE =
+            "5,6;0,4;300,15;6,10,14,8,28,12;5,0,0,7,0,9;4,8,24,18,6,11;7,0,12,0,0,13;3,5,9,15,35,7;5,0;3,2;";
+    private static final String FIVE_BY_SIX_PLAN =
+            "climbup,climbup,right,right,right,collect,right,right,climbup,climbup,unlock";
+
+    // the cheapest plan for BIG_CAVE, the one test_plan_uc_cost2 is about: 2 lives and 75 energy
+    private static final String BIG_PLAN = "right,climbup,collect,climbdown,climbdown,right,right,unlock,climbdown,"
+            + "right,right,collect,left,climbdown,left,jumpdown,jumpdown,right,right,unlock";
+
     private final CaveRules rules = new CaveRules(new CaveMap(PDF_EXAMPLE));
 
     // a state in the PDF example with nothing in hand, the key still on the floor and the door still locked
@@ -239,7 +252,7 @@ public class RulesTests {
     @Test
     public void aLongerPlanOnAnotherCaveWorks() {
         // the cave of test_plan_uc_cost1, whose cheapest plan uses 0 lives and 99 energy
-        CaveMap cave = new CaveMap("5,6;0,4;300,15;6,10,14,8,28,12;5,0,0,7,0,9;4,8,24,18,6,11;7,0,12,0,0,13;3,5,9,15,35,7;5,0;3,2;");
+        CaveMap cave = new CaveMap(FIVE_BY_SIX_CAVE);
         State end = run(cave, Action.CLIMB_UP, Action.CLIMB_UP, Action.RIGHT, Action.RIGHT, Action.RIGHT,
                 Action.COLLECT, Action.RIGHT, Action.RIGHT, Action.CLIMB_UP, Action.CLIMB_UP, Action.UNLOCK);
 
@@ -271,34 +284,202 @@ public class RulesTests {
         assertNull(run(shortRope, Action.RIGHT, Action.CLIMB_UP, Action.COLLECT, Action.CLIMB_DOWN));
     }
 
+    // ---------------------------------------------------------------- winning
+
+    @Test
+    public void weWinWhenNoDoorIsLockedAnyMore() {
+        assertTrue(rules.isGoal(new State(3, 2, 35, 0, 2, false, 0, 0)));
+        // it makes no difference where we stand or whether we still hold a key
+        assertTrue(rules.isGoal(new State(1, 1, 50, 0, 3, true, 0, 0)));
+        // a door that is still locked means we are not done
+        assertFalse(rules.isGoal(new State(3, 2, 35, 0, 2, true, 0, 1)));
+    }
+
+    @Test
+    public void everyDoorMustBeOpen() {
+        // the big cave has 2 doors. Binary 01 means door 0 is open but door 1 is still locked.
+        CaveRules big = new CaveRules(new CaveMap(BIG_CAVE));
+
+        assertFalse(big.isGoal(new State(5, 6, 50, 0, 3, false, 7, 3)));
+        assertFalse(big.isGoal(new State(5, 6, 50, 0, 3, false, 7, 1)));
+        assertTrue(big.isGoal(new State(5, 6, 50, 0, 3, false, 7, 0)));
+    }
+
+    @Test
+    public void noCaveStartsAlreadyWon() {
+        for (String text : new String[] {PDF_EXAMPLE, BIG_CAVE, FIVE_BY_SIX_CAVE}) {
+            CaveMap cave = new CaveMap(text);
+            assertFalse(new CaveRules(cave).isGoal(State.initial(cave)));
+        }
+    }
+
+    // ---------------------------------------------------------------- what a step costs
+
+    @Test
+    public void aWalkCostsTheDifficultyOfTheCaveYouEnter() {
+        State before = at(0, 1, 100, 2, 3);
+
+        assertEquals(12, rules.stepCost(before, rules.apply(before, Action.RIGHT)));
+    }
+
+    @Test
+    public void climbingCostsEnergyButTheRopeIsNotCounted() {
+        State before = at(1, 1, 88, 2, 3);
+
+        assertEquals(3, rules.stepCost(before, rules.apply(before, Action.CLIMB_UP)));
+        assertEquals(7, rules.stepCost(before, rules.apply(before, Action.CLIMB_DOWN)));
+    }
+
+    @Test
+    public void aJumpCostsALifePlusTheDifficultyOfTheLandingCave() {
+        State before = at(1, 1, 73, 0, 3);
+
+        assertEquals(1007, rules.stepCost(before, rules.apply(before, Action.JUMP_DOWN)));
+    }
+
+    @Test
+    public void collectingAndUnlockingAreFree() {
+        State atKey = new State(1, 0, 85, 1, 3, false, 1, 1);
+        State atDoor = new State(3, 2, 35, 0, 2, true, 0, 1);
+
+        assertEquals(0, rules.stepCost(atKey, rules.apply(atKey, Action.COLLECT)));
+        assertEquals(0, rules.stepCost(atDoor, rules.apply(atDoor, Action.UNLOCK)));
+    }
+
+    @Test
+    public void oneLifeCostsMoreThanAllTheEnergyThereCanBe() {
+        // a cave never starts with more than 500 energy
+        assertTrue(CaveRules.LIFE_COST > 500);
+    }
+
+    @Test
+    public void theStepsOfThePdfPlanCostWhatWeExpect() {
+        String[] words = PDF_PLAN.split(",");
+        int[] expected = {12, 3, 0, 12, 1007, 23, 8, 0};
+        State s = State.initial(new CaveMap(PDF_EXAMPLE));
+        int total = 0;
+
+        for (int i = 0; i < words.length; i++) {
+            State next = rules.apply(s, Action.fromText(words[i]));
+            assertEquals(expected[i], rules.stepCost(s, next), "step " + (i + 1) + " (" + words[i] + ")");
+            total += rules.stepCost(s, next);
+            s = next;
+        }
+
+        // that is 1 life and 65 energy
+        assertEquals(1065, total);
+    }
+
+    @Test
+    public void stepCostsAddUpToTheLivesAndEnergyUsed() {
+        // For any plan, the cost of all its steps is LIFE_COST * lives used + energy used.
+        // The totals are what the public tests expect: 1 life and 65 energy, 0 and 99, 2 and 75.
+        String[] caves = {PDF_EXAMPLE, FIVE_BY_SIX_CAVE, BIG_CAVE};
+        String[] plans = {PDF_PLAN, FIVE_BY_SIX_PLAN, BIG_PLAN};
+        int[] totals = {1065, 99, 2075};
+
+        for (int i = 0; i < caves.length; i++) {
+            CaveMap cave = new CaveMap(caves[i]);
+            CaveRules caveRules = new CaveRules(cave);
+            State s = State.initial(cave);
+            int sum = 0;
+            for (String word : plans[i].split(",")) {
+                State next = caveRules.apply(s, Action.fromText(word));
+                sum += caveRules.stepCost(s, next);
+                s = next;
+            }
+
+            assertEquals(totals[i], sum, plans[i]);
+            assertEquals(CaveRules.LIFE_COST * caveRules.livesUsed(s) + caveRules.energyUsed(s), sum, plans[i]);
+        }
+    }
+
+    @Test
+    public void livesAndEnergyUsedAreCountedFromTheStart() {
+        State start = State.initial(new CaveMap(PDF_EXAMPLE));
+        State end = rules.replay(PDF_PLAN);
+
+        assertEquals(0, rules.livesUsed(start));
+        assertEquals(0, rules.energyUsed(start));
+        assertEquals(1, rules.livesUsed(end));
+        assertEquals(65, rules.energyUsed(end));
+    }
+
+    // ---------------------------------------------------------------- replaying a plan written as text
+
+    @Test
+    public void replayRunsAPlanWrittenAsText() {
+        State end = rules.replay(PDF_PLAN);
+
+        assertEquals(new State(3, 2, 35, 0, 2, false, 0, 0), end);
+        assertTrue(rules.isGoal(end));
+    }
+
+    @Test
+    public void replayGivesNullWhenAStepIsNotAllowed() {
+        assertNull(rules.replay("left"));           // off the grid
+        assertNull(rules.replay("right,right"));    // cave (2,1) is a wall
+
+        // with 1 meter of rope the climb back down is not possible
+        CaveRules shortRope = new CaveRules(new CaveMap("3,4;0,1;100,1;0,3,0,0;4,12,0,0;0,7,23,8;3,2;1,0;"));
+        assertNull(shortRope.replay("right,climbup,collect,climbdown"));
+    }
+
+    @Test
+    public void replayOfAnEmptyPlanIsTheStartState() {
+        assertEquals(State.initial(new CaveMap(PDF_EXAMPLE)), rules.replay(""));
+    }
+
+    @Test
+    public void replayDoesNotMindSpacesAroundTheWords() {
+        assertEquals(rules.replay("right,climbup"), rules.replay(" right , climbup "));
+    }
+
+    @Test
+    public void replayRejectsNamesThatAreNotActions() {
+        assertThrows(IllegalArgumentException.class, () -> rules.replay("right,fly"));
+        assertThrows(IllegalArgumentException.class, () -> rules.replay("RIGHT"));     // names are lower case
+        assertThrows(IllegalArgumentException.class, () -> rules.replay("right,,left"));
+    }
+
+    @Test
+    public void everyActionNameReadsBackAsTheSameAction() {
+        for (Action action : Action.values()) {
+            assertEquals(action, Action.fromText(action.toString()));
+        }
+    }
+
+    @Test
+    public void theCheapestPlansCostWhatThePublicTestsExpect() {
+        // test_plan_uc_cost1 expects 0 lives and 99 energy
+        CaveRules fiveBySix = new CaveRules(new CaveMap(FIVE_BY_SIX_CAVE));
+        State end = fiveBySix.replay(FIVE_BY_SIX_PLAN);
+        assertTrue(fiveBySix.isGoal(end));
+        assertEquals(0, fiveBySix.livesUsed(end));
+        assertEquals(99, fiveBySix.energyUsed(end));
+
+        // test_plan_uc_cost2 expects 2 lives and 75 energy
+        CaveRules big = new CaveRules(new CaveMap(BIG_CAVE));
+        end = big.replay(BIG_PLAN);
+        assertTrue(big.isGoal(end));
+        assertEquals(2, big.livesUsed(end));
+        assertEquals(75, big.energyUsed(end));
+    }
     // ---------------------------------------------------------------- the real checker
 
     // The checker from the course is the judge of the rules. Every plan below was tried on it,
     // and our rules have to say the same thing as the checker does.
 
-    private static Action[] actions(String plan) {
-        String[] words = plan.split(",");
-        Action[] result = new Action[words.length];
-        for (int i = 0; i < words.length; i++) {
-            for (Action action : Action.values()) {
-                if (action.toString().equals(words[i])) {
-                    result[i] = action;
-                }
-            }
-            assertNotNull(result[i], "no action is called " + words[i]);
-        }
-        return result;
-    }
 
     // A plan that our rules allow and that opens every door. The checker has to accept it
     // with the lives and energy we work out ourselves.
     private static void checkerAccepts(String caveText, String plan) {
-        CaveMap cave = new CaveMap(caveText);
-        State end = run(cave, actions(plan));
+        CaveRules caveRules = new CaveRules(new CaveMap(caveText));
+        State end = caveRules.replay(plan);
 
         assertNotNull(end, "our rules refuse " + plan);
-        assertEquals(0, end.doorsLocked, "our rules say a door is still locked after " + plan);
-        String answer = plan + ";" + (State.START_LIVES - end.lives) + ";" + (cave.energy - end.energy) + ";1";
+        assertTrue(caveRules.isGoal(end), "our rules say a door is still locked after " + plan);
+        String answer = plan + ";" + caveRules.livesUsed(end) + ";" + caveRules.energyUsed(end) + ";1";
         Checker.ValidationResult result = Checker.validateSolution(caveText, answer);
         assertTrue(result.isValid, "the checker refuses " + answer + " (" + result.errorMessage + ")");
     }
@@ -307,20 +488,20 @@ public class RulesTests {
     // "claimed" is the lives and energy the plan would cost if it were allowed, so the checker can only
     // refuse it because of the plan itself and not because of wrong numbers.
     private static void checkerRefuses(String caveText, String plan, String claimed) {
-        State end = run(new CaveMap(caveText), actions(plan));
+        CaveRules caveRules = new CaveRules(new CaveMap(caveText));
+        State end = caveRules.replay(plan);
 
-        assertTrue(end == null || end.doorsLocked != 0, "our rules accept " + plan);
+        assertTrue(end == null || !caveRules.isGoal(end), "our rules accept " + plan);
         Checker.ValidationResult result = Checker.validateSolution(caveText, plan + ";" + claimed + ";1");
         assertFalse(result.isValid, "the checker accepts " + plan);
     }
 
     @Test
     public void theCheckerAcceptsEveryPlanOurRulesAllow() {
-        String pdfPlan = "right,climbup,collect,climbdown,jumpdown,right,right,unlock";
-        checkerAccepts(PDF_EXAMPLE, pdfPlan);
+        checkerAccepts(PDF_EXAMPLE, PDF_PLAN);
 
         // exactly 65 energy is enough for that plan, so energy may drop to 0
-        checkerAccepts("3,4;0,1;65,2;0,3,0,0;4,12,0,0;0,7,23,8;3,2;1,0;", pdfPlan);
+        checkerAccepts("3,4;0,1;65,2;0,3,0,0;4,12,0,0;0,7,23,8;3,2;1,0;", PDF_PLAN);
 
         // a shaft 4 caves deep: two jumps leave one life, and jumping needs no rope (rope is 0 here)
         checkerAccepts("4,3;1,0;100,0;1,1,1;0,1,0;0,1,0;0,1,0;1,2;0,0;", "left,collect,right,jumpdown,jumpdown,unlock");
@@ -335,21 +516,17 @@ public class RulesTests {
                 "right,collect,right,unlock,right,collect,left,left,left,unlock");
 
         // the cheapest plans of two public caves
-        checkerAccepts("5,6;0,4;300,15;6,10,14,8,28,12;5,0,0,7,0,9;4,8,24,18,6,11;7,0,12,0,0,13;3,5,9,15,35,7;5,0;3,2;",
-                "climbup,climbup,right,right,right,collect,right,right,climbup,climbup,unlock");
-        checkerAccepts(BIG_CAVE, "right,climbup,collect,climbdown,climbdown,right,right,unlock,climbdown,right,right,"
-                + "collect,left,climbdown,left,jumpdown,jumpdown,right,right,unlock");
+        checkerAccepts(FIVE_BY_SIX_CAVE, FIVE_BY_SIX_PLAN);
+        checkerAccepts(BIG_CAVE, BIG_PLAN);
     }
 
     @Test
     public void theCheckerRefusesEveryPlanOurRulesRefuse() {
-        String pdfPlan = "right,climbup,collect,climbdown,jumpdown,right,right,unlock";
-
         // 1 meter of rope is not enough for climbing up and then down
-        checkerRefuses("3,4;0,1;100,1;0,3,0,0;4,12,0,0;0,7,23,8;3,2;1,0;", pdfPlan, "1;65");
+        checkerRefuses("3,4;0,1;100,1;0,3,0,0;4,12,0,0;0,7,23,8;3,2;1,0;", PDF_PLAN, "1;65");
 
         // 64 energy is one short for the last step
-        checkerRefuses("3,4;0,1;64,2;0,3,0,0;4,12,0,0;0,7,23,8;3,2;1,0;", pdfPlan, "1;65");
+        checkerRefuses("3,4;0,1;64,2;0,3,0,0;4,12,0,0;0,7,23,8;3,2;1,0;", PDF_PLAN, "1;65");
 
         // a third jump would use the last life
         checkerRefuses("4,3;1,0;100,0;1,1,1;0,1,0;0,1,0;0,1,0;1,3;0,0;",

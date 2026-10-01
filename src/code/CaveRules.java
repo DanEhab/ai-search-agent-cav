@@ -8,6 +8,10 @@ import java.util.Arrays;
  */
 public class CaveRules {
 
+    // A cave never starts with more than 500 energy, so one life is worth more than all the energy
+    // there is. That way a plan that loses fewer lives always costs less, whatever the energy.
+    public static final int LIFE_COST = 1000;
+
     private final CaveMap cave;
 
     // keyAt[y][x] is the number of the key lying in that cave, or -1 if there is none.
@@ -114,4 +118,39 @@ public class CaveRules {
         return new State(s.x, s.y, s.energy, s.rope, s.lives,
                 false, s.keysOnFloor, s.doorsLocked & ~(1 << door));
     }
-}
+
+    // We win when no door is locked any more. Having a life left comes for free, because
+    // a jump is never allowed on the last one.
+    public boolean isGoal(State s) {
+        return s.doorsLocked == 0;
+    }
+
+    // What one step cost: every life it took counts LIFE_COST, plus the energy it used.
+    // Rope is not part of the cost.
+    public int stepCost(State before, State after) {
+        return (before.lives - after.lives) * LIFE_COST + (before.energy - after.energy);
+    }
+
+    public int livesUsed(State s) {
+        return State.START_LIVES - s.lives;
+    }
+
+    public int energyUsed(State s) {
+        return cave.energy - s.energy;
+    }
+
+    // Runs a plan written as text, like "right,climbup,collect", from the start of the cave.
+    // Gives back the state we end up in, or null if one of the steps is not allowed.
+    public State replay(String plan) {
+        State s = State.initial(cave);
+        if (plan.trim().isEmpty()) {
+            return s;
+        }
+        for (String word : plan.split(",")) {
+            s = apply(s, Action.fromText(word.trim()));
+            if (s == null) {
+                return null;
+            }
+        }
+        return s;
+    }}
