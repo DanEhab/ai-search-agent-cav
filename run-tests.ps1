@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Compiles the Cave Explorer project and runs the public tests.
+    Compiles the Cave Explorer project and runs the tests (the public ones by default).
 
 .DESCRIPTION
     1. Checks the test name you asked for (if any) so a typo fails immediately.
@@ -17,24 +17,41 @@
         3  compile error, missing Java, or the test run did not finish normally
 
 .PARAMETER Test
-    Optional. One test to run, either the short name (uc1) or the full method name (test_plan_uc1).
+    Optional. One test to run. For the public tests the short name works (uc1 means test_plan_uc1).
+
+.PARAMETER Class
+    Which test file to use, without .java. The default is PublicTests. Our own tests live in ModelTests.
+
+.PARAMETER All
+    Run every test file in src\tests (cannot be combined with -Test or -Class).
 
 .PARAMETER Full
     Also print the long failure details (stack traces) that are hidden by default.
 
 .EXAMPLE
-    .\run-tests.ps1                 compile, then run all 21 public tests
+    .\run-tests.ps1                              compile, then run all 21 public tests
 .EXAMPLE
-    .\run-tests.ps1 uc1             compile, then run only test_plan_uc1
+    .\run-tests.ps1 uc1                          compile, then run only test_plan_uc1
 .EXAMPLE
-    .\run-tests.ps1 as_cost2 -Full  run one test and show the full failure details
+    .\run-tests.ps1 -Class ModelTests            run our own tests
+.EXAMPLE
+    .\run-tests.ps1 -Class ModelTests -Test pdfExampleIsReadCorrectly
+.EXAMPLE
+    .\run-tests.ps1 -All                         run the public tests and our own tests together
+.EXAMPLE
+    .\run-tests.ps1 as_cost2 -Full               run one test and show the full failure details
 #>
 param(
     [string]$Test = "",
+    [string]$Class = "PublicTests",
+    [switch]$All,
     [switch]$Full
 )
 
 # Plain-text only in this file: Windows PowerShell 5.1 misreads non-ASCII characters in scripts.
+
+# Remember if -Class was typed (a function cannot see this by itself).
+$classWasGiven = $PSBoundParameters.ContainsKey("Class")
 
 function Invoke-CompileAndTest {
     # --- 0. Make sure Java is available ------------------------------------------------------
@@ -46,23 +63,44 @@ function Invoke-CompileAndTest {
     }
 
     # --- 1. Choose which tests to run (and reject typos before doing any work) ---------------
-    if ($Test -eq "") {
-        $selector = @("--select-class", "tests.PublicTests")
-        $what = "all public tests"
+    if ($All) {
+        if ($Test -ne "" -or $classWasGiven) {
+            Write-Host "ERROR: -All cannot be combined with -Test or -Class." -ForegroundColor Red
+            return 3
+        }
+        $selector = @("--select-package", "tests")
+        $what = "every test file in src\tests"
     } else {
-        $method = if ($Test.StartsWith("test_")) { $Test } else { "test_plan_$Test" }
-        # The list of real test names is read straight from the test file.
-        $known = @(Select-String -Path "src\tests\PublicTests.java" -Pattern 'public void (test_\w+)\(' |
-                   ForEach-Object { $_.Matches[0].Groups[1].Value })
-        if ($known -notcontains $method) {
-            Write-Host "RESULT: there is no test called '$method'. Available tests:" -ForegroundColor Red
-            Write-Host ("  " + (($known -replace '^test_plan_', '') -join ", "))
+        # Look the file up by listing the folder: that gives its real spelling, which matters because
+        # Windows ignores letter case in file names but JUnit does not.
+        $testFiles = @(Get-ChildItem -Path "src\tests" -Filter "*.java")
+        $classFileInfo = @($testFiles | Where-Object { $_.BaseName -ieq $Class })[0]
+        if (-not $classFileInfo) {
+            Write-Host "RESULT: there is no test file called '$Class'. Available: $(($testFiles | ForEach-Object { $_.BaseName }) -join ', ')" -ForegroundColor Red
             return 2
         }
-        # PowerShell ignores letter case in the check above, but JUnit does not: use the exact spelling from the file.
-        $method = @($known | Where-Object { $_ -ieq $method })[0]
-        $selector = @("--select-method", "tests.PublicTests#$method")
-        $what = $method
+        $Class = $classFileInfo.BaseName
+        $classFile = $classFileInfo.FullName
+        if ($Test -eq "") {
+            $selector = @("--select-class", "tests.$Class")
+            $what = "all tests in $Class"
+        } else {
+            # The real test names are read straight from the test file (every @Test method).
+            $text = Get-Content -Path $classFile -Raw
+            $known = @([regex]::Matches($text, '@Test\s+(?:public\s+)?void\s+(\w+)\s*\(') |
+                       ForEach-Object { $_.Groups[1].Value })
+            # Accept the full name or the short one (uc1 for test_plan_uc1). PowerShell ignores letter case
+            # here but JUnit does not, so keep the exact spelling from the file.
+            $method = @($known | Where-Object { $_ -ieq $Test -or $_ -ieq "test_plan_$Test" })[0]
+            if (-not $method) {
+                Write-Host "RESULT: there is no test called '$Test' in $Class. Available tests:" -ForegroundColor Red
+                Write-Host ("  " + (($known -replace '^test_plan_', '') -join ", "))
+                Write-Host "Tip: -Class picks another test file, for example -Class ModelTests" -ForegroundColor DarkGray
+                return 2
+            }
+            $selector = @("--select-method", "tests.$Class#$method")
+            $what = $method
+        }
     }
 
     # --- 2. Clean build: remove old .class files ---------------------------------------------
