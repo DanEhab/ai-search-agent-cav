@@ -10,10 +10,6 @@ import java.util.PriorityQueue;
  */
 public class CaveExplorer extends GenericSearchProblem {
 
-    // What we answer when a state can never win. It is far more than any real cost, so A* leaves such
-    // states alone for as long as it has anything better to do.
-    private static final int TOO_MUCH = 1000000;
-
     private final CaveMap cave;
     private final CaveRules rules;
 
@@ -80,7 +76,7 @@ public class CaveExplorer extends GenericSearchProblem {
     //      Every step up needs a meter of rope, and every step down needs a meter of rope or a life
     //      (a jump). So whatever the rope cannot pay for has to be paid with lives, 1000 each.
     // If a walk cannot be done at all (more steps up than we have rope, more jumps than we have lives to
-    // spare, or more energy than we have left), nobody can win from here and the answer is TOO_MUCH.
+    // spare, or more energy than we have left), nobody can win from here and the answer is HOPELESS.
     //
     // Manhattan distance only counts steps. This counts energy and lives, which is what the cost is made of.
     @Override
@@ -104,7 +100,7 @@ public class CaveExplorer extends GenericSearchProblem {
                     rowsUp(state.y, doorY), rowsDown(state.y, doorY));
         }
 
-        int cheapest = TOO_MUCH;
+        int cheapest = HOPELESS;
         for (int key = 0; key < cave.keys.length; key++) {
             if (!state.keyOnFloor(key)) {
                 continue;
@@ -120,12 +116,12 @@ public class CaveExplorer extends GenericSearchProblem {
     }
 
     // What a trip costs at the very least, if it needs this much energy and goes up and down at least this
-    // many rows: the energy, plus 1000 for every step down that the rope cannot pay for. Or TOO_MUCH if
+    // many rows: the energy, plus 1000 for every step down that the rope cannot pay for. Or HOPELESS if
     // we could not make the trip at all.
     private int costOfTrip(State state, int energy, int up, int down) {
         int jumps = Math.max(0, up + down - state.rope);
         if (up > state.rope || jumps > state.lives - 1 || energy > state.energy) {
-            return TOO_MUCH;
+            return HOPELESS;
         }
         return jumps * CaveRules.LIFE_COST + energy;
     }
@@ -140,12 +136,12 @@ public class CaveExplorer extends GenericSearchProblem {
     }
 
     // The least energy to walk from every cave to the cave (targetX, targetY), looking only at the walls and
-    // the difficulties. A cave that cannot be reached at all gets TOO_MUCH. It is Dijkstra's algorithm run
+    // the difficulties. A cave that cannot be reached at all gets HOPELESS. It is Dijkstra's algorithm run
     // backwards from the target: walking from a neighbour into a cave costs that cave's difficulty.
     private int[][] energyTo(int targetX, int targetY) {
         int[][] least = new int[cave.rows][cave.cols];
         for (int[] row : least) {
-            Arrays.fill(row, TOO_MUCH);
+            Arrays.fill(row, HOPELESS);
         }
         least[targetY][targetX] = 0;
 

@@ -3,6 +3,7 @@ package tests;
 import code.CaveExplorer;
 import code.CaveMap;
 import code.CaveRules;
+import code.GenericSearchProblem;
 import code.Node;
 import code.Search;
 import code.State;
@@ -308,26 +309,29 @@ public class SearchTests {
     }
 
     @Test
-    public void everyRoundStartsOverAndNoStateIsExpandedAgainAtTheSameDepth() {
-        RecordingProblem problem = new RecordingProblem(new CaveMap(PDF_EXAMPLE));
-        Node goal = new Search().run(problem, Strategy.ID);
+    public void everyRoundStartsOverAndEachStateIsExpandedOnlyOnceAtItsShortestDepth() {
+        for (String text : new String[] {PDF_EXAMPLE, PUBLIC_CAVES[0]}) {
+            RecordingProblem problem = new RecordingProblem(new CaveMap(text));
+            Node goal = new Search().run(problem, Strategy.ID);
 
-        // A new round begins whenever the start node (depth 0) is expanded again. Within one round a state
-        // may only be expanded again if we reach it with fewer steps than before.
-        Map<State, Integer> shallowest = new HashMap<>();
-        int rounds = 0;
-        for (Node node : problem.expanded) {
-            if (node.depth == 0) {
-                rounds++;
-                shallowest.clear();
+            // A new round begins whenever the start node (depth 0) is expanded again. In a round every state is
+            // expanded at most once, and every round expands it at the same depth: the fewest actions to get there.
+            Map<State, Integer> shortest = new HashMap<>();
+            Set<State> expandedInThisRound = new HashSet<>();
+            int rounds = 0;
+            for (Node node : problem.expanded) {
+                if (node.depth == 0) {
+                    rounds++;
+                    expandedInThisRound.clear();
+                }
+                assertTrue(expandedInThisRound.add(node.state), "expanded twice in one round: " + node.state);
+                Integer earlier = shortest.putIfAbsent(node.state, node.depth);
+                assertTrue(earlier == null || earlier == node.depth, "expanded at two depths: " + node.state);
             }
-            Integer earlier = shallowest.get(node.state);
-            assertTrue(earlier == null || node.depth < earlier, "expanded again too deep: " + node.state);
-            shallowest.put(node.state, node.depth);
-        }
 
-        // the rounds have limits 1, 2, 3 ... up to the depth of the goal (a round with limit 0 expands nothing)
-        assertEquals(goal.depth, rounds);
+            // the rounds have limits 1, 2, 3 ... up to the depth of the goal (a round with limit 0 expands nothing)
+            assertEquals(goal.depth, rounds, text);
+        }
     }
 
     @Test
@@ -432,6 +436,42 @@ public class SearchTests {
                 assertEquals(1, times, text);
             }
         }
+    }
+
+    @Test
+    public void aStarNeverQueuesAStateThatItsGuessCallsHopeless() {
+        // The PDF example cannot be won without a jump, because 2 meters of rope are not enough. This guess gives
+        // up on every state in which a life has been spent, so A* has to leave all of those alone and finds no plan.
+        RecordingProblem noJumps = new RecordingProblem(new CaveMap(PDF_EXAMPLE)) {
+            @Override
+            public int heuristic(State state) {
+                return state.lives < State.START_LIVES ? HOPELESS : 0;
+            }
+        };
+
+        assertNull(new Search().run(noJumps, Strategy.AS));
+        assertFalse(noJumps.expanded.isEmpty());
+        for (Node node : noJumps.expanded) {
+            assertEquals(State.START_LIVES, node.state.lives);
+        }
+    }
+
+    @Test
+    public void uniformCostNeverAsksForTheGuess() {
+        // a guess that calls every state hopeless, and counts how often it is asked
+        int[] asked = {0};
+        CaveExplorer hopeless = new CaveExplorer(new CaveMap(PDF_EXAMPLE)) {
+            @Override
+            public int heuristic(State state) {
+                asked[0]++;
+                return GenericSearchProblem.HOPELESS;
+            }
+        };
+
+        Node found = new Search().run(hopeless, Strategy.UC);
+
+        assertEquals(1065, found.pathCost);
+        assertEquals(0, asked[0]);
     }
 
     @Test

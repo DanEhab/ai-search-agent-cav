@@ -49,6 +49,8 @@ public class Search {
     // A guess that only looks at the state does not change that.
     // The priority of a node (the smaller, the sooner it is looked at) is worked out once, when the
     // node is queued. Asking for the guess again on every comparison inside the queue made A* slow.
+    // A node whose priority is HOPELESS or more is not queued at all: that is how the guess of A* says that
+    // no goal can be reached from there. Uniform cost has no guess, so it never meets this.
     private Node bestFirst(GenericSearchProblem problem, ToIntFunction<Node> priority) {
         PriorityQueue<Queued> queue = new PriorityQueue<>(Comparator.comparingInt(q -> q.priority));
         Set<State> seen = new HashSet<>();
@@ -65,7 +67,10 @@ public class Search {
             nodesExpanded++;
             for (Node child : problem.expand(node)) {
                 if (seen.add(child.state)) {
-                    queue.add(new Queued(child, priority.applyAsInt(child)));
+                    int rank = priority.applyAsInt(child);
+                    if (rank < GenericSearchProblem.HOPELESS) {
+                        queue.add(new Queued(child, rank));
+                    }
                 }
             }
         }
@@ -75,14 +80,17 @@ public class Search {
     // Iterative deepening: search down to depth 0, then to depth 1, then 2 and so on, until a round
     // finds a goal. That goal needs the fewest actions, but it is not always the cheapest one.
     // If a whole round finishes without ever being stopped by its limit, nothing is left to try.
+    // "known" remembers every state we have met, over all the rounds, with the fewest actions it takes to get
+    // there. That number never changes once we know it, so every new round can make use of it.
     private Node iterativeDeepening(GenericSearchProblem problem) {
+        Node start = problem.initialNode();
+        Map<State, Known> known = new HashMap<>();
+        known.put(start.state, new Known(0, 0));
         for (int limit = 0; ; limit++) {
             hitLimit = false;
-            Node start = problem.initialNode();
-            Map<State, Integer> shallowest = new HashMap<>();
-            shallowest.put(start.state, 0);
+            known.get(start.state).lastRound = limit;
 
-            Node goal = depthLimited(problem, start, limit, shallowest);
+            Node goal = depthLimited(problem, start, limit, known);
             if (goal != null) {
                 return goal;
             }
@@ -92,12 +100,14 @@ public class Search {
         }
     }
 
-    // A depth-first search that never goes deeper than the limit. "shallowest" remembers the smallest
-    // depth at which each state was reached in this round. Reaching a state again at the same depth or
-    // deeper is pointless, because we already tried everything below it with at least as many steps
-    // to spare. Only a shallower visit is worth another go. Without this, going left and right over and
-    // over would make the search tree gigantic.
-    private Node depthLimited(GenericSearchProblem problem, Node node, int limit, Map<State, Integer> shallowest) {
+    // A depth-first search that never goes deeper than the limit. Only the shortest way to a state is worth
+    // following: arriving by a longer way is pointless, because the shortest way has more steps to spare
+    // for everything below the state. So we skip a state if we know a shorter way to it, and, since a
+    // state needs only one visit per round, if we were there already in this round.
+    // A state we have never met before can only be reached at the limit (the earlier rounds would have
+    // found it otherwise), so the depth we first see it at is the shortest one.
+    // Without all this, going left and right over and over would make the search tree gigantic.
+    private Node depthLimited(GenericSearchProblem problem, Node node, int limit, Map<State, Known> known) {
         if (problem.isGoal(node.state)) {
             return node;
         }
@@ -107,17 +117,32 @@ public class Search {
         }
         nodesExpanded++;
         for (Node child : problem.expand(node)) {
-            Integer before = shallowest.get(child.state);
-            if (before != null && before <= child.depth) {
+            Known before = known.get(child.state);
+            if (before == null) {
+                known.put(child.state, new Known(child.depth, limit));
+            } else if (before.depth < child.depth || before.lastRound == limit) {
                 continue;
+            } else {
+                before.lastRound = limit;
             }
-            shallowest.put(child.state, child.depth);
-            Node goal = depthLimited(problem, child, limit, shallowest);
+            Node goal = depthLimited(problem, child, limit, known);
             if (goal != null) {
                 return goal;
             }
         }
         return null;
+    }
+
+    // What iterative deepening knows about a state: the fewest actions that lead to it, and the last
+    // round in which it was visited.
+    private static class Known {
+        final int depth;
+        int lastRound;
+
+        Known(int depth, int lastRound) {
+            this.depth = depth;
+            this.lastRound = lastRound;
+        }
     }
 
     // a node waiting in the queue, together with the priority it was queued with

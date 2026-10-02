@@ -131,7 +131,7 @@ public class HeuristicTests {
         @Override
         public int heuristic(State state) {
             Integer real = left.get(state);
-            return (real == null || real == NO_WAY) ? 1000000 : real;
+            return (real == null || real == NO_WAY) ? HOPELESS : real;
         }
     }
 
@@ -229,18 +229,18 @@ public class HeuristicTests {
     @Test
     public void aStateThatCanNeverWinGetsAHugeGuess() {
         CaveExplorer problem = new CaveExplorer(new CaveMap(PDF_EXAMPLE));
-        int huge = 100000;
+        int hopeless = GenericSearchProblem.HOPELESS;
 
         // not enough energy for the 3 it takes to step up into the key's cave
-        assertTrue(problem.heuristic(new State(1, 1, 2, 2, 3, false, 1, 1)) > huge);
+        assertTrue(problem.heuristic(new State(1, 1, 2, 2, 3, false, 1, 1)) >= hopeless);
         // the key is a row up and there is no rope left to climb with (plenty of lives, so only the rope matters)
-        assertTrue(problem.heuristic(new State(1, 1, 88, 0, 9, false, 1, 1)) > huge);
+        assertTrue(problem.heuristic(new State(1, 1, 88, 0, 9, false, 1, 1)) >= hopeless);
         // the key has been used already and our hands are empty, so the door can never be opened
-        assertTrue(problem.heuristic(new State(1, 1, 88, 2, 3, false, 0, 1)) > huge);
+        assertTrue(problem.heuristic(new State(1, 1, 88, 2, 3, false, 0, 1)) >= hopeless);
         // the door is a row down, there is no rope, and with one life left we cannot jump
-        assertTrue(problem.heuristic(new State(1, 1, 88, 0, 1, true, 0, 1)) > huge);
+        assertTrue(problem.heuristic(new State(1, 1, 88, 0, 1, true, 0, 1)) >= hopeless);
         // a key is in hand but the door is out of reach for the energy we have
-        assertTrue(problem.heuristic(new State(1, 1, 20, 3, 3, true, 0, 1)) > huge);
+        assertTrue(problem.heuristic(new State(1, 1, 20, 3, 3, true, 0, 1)) >= hopeless);
     }
 
     @Test

@@ -13,6 +13,10 @@ import java.util.List;
  */
 public abstract class GenericSearchProblem {
 
+    // What heuristic() answers for a state from which no goal can be reached at all. It is far more than
+    // any real cost, so A* does not even queue such a state.
+    public static final int HOPELESS = 1000000;
+
     // the state we start in
     public abstract State initialState();
 
@@ -30,6 +34,7 @@ public abstract class GenericSearchProblem {
 
     // A guess of how much is still left to pay from this state until a goal. A* adds it to the cost so far.
     // It must never guess more than what is really left, and it must be 0 in a goal state.
+    // If no goal can be reached from the state at all, it answers HOPELESS.
     public abstract int heuristic(State state);
 
     // the node a search starts from
