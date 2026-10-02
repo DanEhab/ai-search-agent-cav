@@ -20,7 +20,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for the search loop and for uniform cost search.
+ * Tests for the search loop and the three strategies: uniform cost, iterative deepening and A*.
  */
 public class SearchTests {
 
@@ -344,4 +344,93 @@ public class SearchTests {
             different.add(node.state);
         }
         assertTrue(different.size() < search.nodesExpanded());
+    }
+
+    // ---------------------------------------------------------------- A*
+
+    @Test
+    public void aStarFindsTheCheapestPlanOfEveryPublicCave() {
+        assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
+            for (int i = 0; i < PUBLIC_CAVES.length; i++) {
+                CaveMap cave = new CaveMap(PUBLIC_CAVES[i]);
+                CaveRules rules = new CaveRules(cave);
+                Search search = new Search();
+                Node goal = search.run(new CaveExplorer(cave), Strategy.AS);
+                String which = "public cave number " + i;
+
+                if (CHEAPEST[i] == -1) {
+                    assertNull(goal, which);
+                    continue;
+                }
+                assertNotNull(goal, which);
+                assertTrue(rules.isGoal(goal.state), which);
+                assertEquals(CHEAPEST[i], goal.pathCost, which);
+                assertEquals(goal.state, rules.replay(goal.planText()), which);
+
+                String answer = goal.planText() + ";" + rules.livesUsed(goal.state) + ";"
+                        + rules.energyUsed(goal.state) + ";" + search.nodesExpanded();
+                Checker.ValidationResult result = Checker.validateSolution(PUBLIC_CAVES[i], answer);
+                assertTrue(result.isValid, which + ": the checker refuses " + answer + " (" + result.errorMessage + ")");
+            }
+        });
+    }
+
+    @Test
+    public void aStarGivesNoNodeWhenThereIsNoWay() {
+        assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
+            Search search = new Search();
+
+            assertNull(search.run(new CaveExplorer(new CaveMap(PUBLIC_CAVES[7])), Strategy.AS));
+            assertTrue(search.nodesExpanded() > 0);
+            assertNull(new Search().run(new CaveExplorer(new CaveMap("3,4;0,1;100,0;0,3,0,0;4,12,0,0;0,7,23,8;3,2;1,0;")), Strategy.AS));
+        });
+    }
+
+    @Test
+    public void aStarWithAGuessOfZeroDoesWhatUniformCostDoes() {
+        assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
+            for (String text : PUBLIC_CAVES) {
+                CaveMap cave = new CaveMap(text);
+                CaveExplorer noGuess = new CaveExplorer(cave) {
+                    @Override
+                    public int heuristic(State state) {
+                        return 0;
+                    }
+                };
+                Search uniform = new Search();
+                Search aStar = new Search();
+                Node fromUniform = uniform.run(new CaveExplorer(cave), Strategy.UC);
+                Node fromAStar = aStar.run(noGuess, Strategy.AS);
+
+                // the same order of nodes, so the same number of them
+                assertEquals(uniform.nodesExpanded(), aStar.nodesExpanded(), text);
+                if (fromUniform == null) {
+                    assertNull(fromAStar, text);
+                } else {
+                    assertEquals(fromUniform.pathCost, fromAStar.pathCost, text);
+                }
+            }
+        });
+    }
+
+    @Test
+    public void aGuessThatIsTooBigCanMakeAStarMissTheCheapestPlan() {
+        // The PDF example with 3 meters of rope: the cheapest plan costs 65 and needs no jump.
+        // This guess says that anyone who has not lost a life yet is 5000 away from the goal. That is
+        // far more than the truth, so A* runs away from those states and pays lives to get out of them.
+        // It is why a guess must never be bigger than what is really left.
+        CaveMap cave = new CaveMap("3,4;0,1;100,3;0,3,0,0;4,12,0,0;0,7,23,8;3,2;1,0;");
+        CaveExplorer tooBig = new CaveExplorer(cave) {
+            @Override
+            public int heuristic(State state) {
+                return state.lives == State.START_LIVES ? 5000 : 0;
+            }
+        };
+
+        Node cheapest = new Search().run(new CaveExplorer(cave), Strategy.UC);
+        Node misled = new Search().run(tooBig, Strategy.AS);
+
+        assertEquals(65, cheapest.pathCost);
+        assertTrue(misled.pathCost > cheapest.pathCost);
+        assertTrue(misled.state.lives < State.START_LIVES);
     }}

@@ -28,6 +28,8 @@ public class Search {
                 return bestFirst(problem, Comparator.comparingInt(n -> n.pathCost));
             case ID:
                 return iterativeDeepening(problem);
+            case AS:
+                return bestFirst(problem, Comparator.comparingInt(n -> n.pathCost + problem.heuristic(n.state)));
             default:
                 throw new IllegalArgumentException("unknown strategy " + strategy);
         }
@@ -43,6 +45,7 @@ public class Search {
     // otherwise queue its children. We only queue a child if we have not seen its state before.
     // That is safe because reaching a state always costs the same, whatever path we took: the cost
     // only depends on the lives and the energy used, and both of those are part of the state.
+    // A guess that only looks at the state does not change that.
     private Node bestFirst(GenericSearchProblem problem, Comparator<Node> order) {
         PriorityQueue<Node> queue = new PriorityQueue<>(order);
         Set<State> seen = new HashSet<>();

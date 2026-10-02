@@ -28,6 +28,10 @@ public abstract class GenericSearchProblem {
     // what the single step from one state to the next one costs
     public abstract int stepCost(State before, State after);
 
+    // A guess of how much is still left to pay from this state until a goal. A* adds it to the cost so far.
+    // It must never guess more than what is really left, and it must be 0 in a goal state.
+    public abstract int heuristic(State state);
+
     // the node a search starts from
     public Node initialNode() {
         return new Node(initialState());

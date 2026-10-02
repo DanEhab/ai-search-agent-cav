@@ -7,7 +7,8 @@ import java.util.Arrays;
  */
 public enum Strategy {
     UC,   // uniform cost: always carry on from the cheapest node we have
-    ID;   // iterative deepening: depth-limited searches with a limit that grows 0, 1, 2, ...
+    ID,   // iterative deepening: depth-limited searches with a limit that grows 0, 1, 2, ...
+    AS;   // A*: carry on from the node with the lowest cost so far plus a guess of what is left
 
     // the strategy with this name ("UC" gives UC), or an error that lists the ones we have
     public static Strategy fromText(String text) {

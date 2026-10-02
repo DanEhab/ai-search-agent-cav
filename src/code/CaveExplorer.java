@@ -40,6 +40,13 @@ public class CaveExplorer extends GenericSearchProblem {
         return rules.stepCost(before, after);
     }
 
+    // We have no real guess yet. Saying 0 means "no idea how far the goal is", and with that A* does
+    // exactly what uniform cost search does.
+    @Override
+    public int heuristic(State state) {
+        return 0;
+    }
+
     // Reads the cave, searches it with the strategy ("UC", "ID" or "AS") and gives back the answer in
     // the format the assignment wants: plan;lives;energy;nodes. If the cave cannot be won it is "No Solution".
     public static String solve(String initString, String strategy) {

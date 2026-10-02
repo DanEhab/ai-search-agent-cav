@@ -123,17 +123,20 @@ public class SolveTests {
     }
 
     @Test
-    public void theRealCheckerAcceptsEveryAnswer() {
+    public void theRealCheckerAcceptsEveryAnswerOfEveryStrategy() {
         assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
-            for (int i = 0; i < PUBLIC_CAVES.length; i++) {
-                if (LIVES_USED[i] == -1) {
-                    continue;   // the checker does not judge "No Solution"
-                }
-                String answer = CaveExplorer.solve(PUBLIC_CAVES[i], "UC");
-                Checker.ValidationResult result = Checker.validateSolution(PUBLIC_CAVES[i], answer);
+            for (String strategy : new String[] {"UC", "ID", "AS"}) {
+                for (int i = 0; i < PUBLIC_CAVES.length; i++) {
+                    String answer = CaveExplorer.solve(PUBLIC_CAVES[i], strategy);
+                    String which = strategy + " on public cave number " + i;
 
-                assertTrue(result.isValid, "public cave number " + i + ": the checker refuses " + answer
-                        + " (" + result.errorMessage + ")");
+                    if (LIVES_USED[i] == -1) {
+                        assertEquals("No Solution", answer, which);   // the checker does not judge this text
+                        continue;
+                    }
+                    Checker.ValidationResult result = Checker.validateSolution(PUBLIC_CAVES[i], answer);
+                    assertTrue(result.isValid, which + ": the checker refuses " + answer + " (" + result.errorMessage + ")");
+                }
             }
         });
     }
@@ -154,18 +157,19 @@ public class SolveTests {
     }
 
     @Test
-    public void theRealCheckerAcceptsEveryIterativeDeepeningAnswer() {
+    public void aStarAnswersWithTheSameLivesAndEnergyAsUniformCost() {
         assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
             for (int i = 0; i < PUBLIC_CAVES.length; i++) {
-                String answer = CaveExplorer.solve(PUBLIC_CAVES[i], "ID");
+                String uniform = CaveExplorer.solve(PUBLIC_CAVES[i], "UC");
+                String aStar = CaveExplorer.solve(PUBLIC_CAVES[i], "AS");
+
                 if (LIVES_USED[i] == -1) {
-                    assertEquals("No Solution", answer, "public cave number " + i);
+                    assertEquals("No Solution", aStar, "public cave number " + i);
                     continue;
                 }
-                Checker.ValidationResult result = Checker.validateSolution(PUBLIC_CAVES[i], answer);
-
-                assertTrue(result.isValid, "public cave number " + i + ": the checker refuses " + answer
-                        + " (" + result.errorMessage + ")");
+                // the plans may differ, but both are the cheapest, so lives and energy are the same
+                assertEquals(uniform.split(";")[1], aStar.split(";")[1], "lives, public cave number " + i);
+                assertEquals(uniform.split(";")[2], aStar.split(";")[2], "energy, public cave number " + i);
             }
         });
     }
@@ -190,6 +194,7 @@ public class SolveTests {
         assertTrue(error.getMessage().contains("XYZ"));
         assertTrue(error.getMessage().contains("UC"));
         assertTrue(error.getMessage().contains("ID"));
+        assertTrue(error.getMessage().contains("AS"));
     }
 
     @Test
@@ -198,6 +203,7 @@ public class SolveTests {
         assertThrows(IllegalArgumentException.class, () -> CaveExplorer.solve(PDF_EXAMPLE, ""));
         assertEquals(Strategy.UC, Strategy.fromText("UC"));
         assertEquals(Strategy.ID, Strategy.fromText("ID"));
+        assertEquals(Strategy.AS, Strategy.fromText("AS"));
         assertThrows(IllegalArgumentException.class, () -> CaveExplorer.solve(PDF_EXAMPLE, "Id"));
     }
 
