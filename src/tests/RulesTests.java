@@ -553,4 +553,5 @@ public class RulesTests {
 
         // every move is allowed, but the door is still locked at the end
         checkerRefuses(PDF_EXAMPLE, "right", "0;12");
-    }}
+    }
+}

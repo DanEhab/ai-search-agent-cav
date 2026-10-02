@@ -344,4 +344,5 @@ public class ModelTests {
     public void toStringListsEveryNumber() {
         assertEquals("State(x=1, y=1, energy=88, rope=2, lives=3, holdingKey=false, keysOnFloor=1, doorsLocked=1)",
                 sampleState().toString());
-    }}
+    }
+}

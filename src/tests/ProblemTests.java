@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Queue;
@@ -136,7 +137,7 @@ public class ProblemTests {
         List<Node> children = problem.expand(afterRight);
 
         // right is a wall, and there is nothing to collect or unlock in this cave
-        List<Action> expected = List.of(Action.LEFT, Action.CLIMB_UP, Action.CLIMB_DOWN, Action.JUMP_DOWN);
+        List<Action> expected = Arrays.asList(Action.LEFT, Action.CLIMB_UP, Action.CLIMB_DOWN, Action.JUMP_DOWN);
         assertEquals(expected, actionsOf(children));
     }
 
@@ -166,7 +167,7 @@ public class ProblemTests {
         List<Node> children = problem.expand(node);
 
         // we can go back down by climbing or jumping, or pick up the key. Collecting is free.
-        assertEquals(List.of(Action.CLIMB_DOWN, Action.JUMP_DOWN, Action.COLLECT), actionsOf(children));
+        assertEquals(Arrays.asList(Action.CLIMB_DOWN, Action.JUMP_DOWN, Action.COLLECT), actionsOf(children));
         assertEquals(node.pathCost, children.get(2).pathCost);
         assertTrue(children.get(2).state.holdingKey);
     }
@@ -203,7 +204,7 @@ public class ProblemTests {
                 return new Action[] {Action.RIGHT, Action.CLIMB_UP};
             }
         };
-        assertEquals(List.of(Action.CLIMB_UP), actionsOf(fewOperators.expand(afterRight)));
+        assertEquals(Arrays.asList(Action.CLIMB_UP), actionsOf(fewOperators.expand(afterRight)));
 
         // a problem where nothing is ever allowed
         CaveExplorer nothingAllowed = new CaveExplorer(cave) {

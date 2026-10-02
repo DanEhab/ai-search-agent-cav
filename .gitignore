@@ -4,3 +4,6 @@ bin/
 
 # Ignored PDFs
 Assignment 1 Description.pdf
+
+# The zip made by make-submission.ps1
+submission/

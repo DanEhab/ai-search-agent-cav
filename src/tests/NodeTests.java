@@ -7,7 +7,7 @@ import code.Node;
 import code.State;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -104,11 +104,11 @@ public class NodeTests {
         Node two = child(one, Action.CLIMB_UP, 3);
         Node three = child(two, Action.COLLECT, 0);
 
-        assertEquals(List.of(Action.RIGHT, Action.CLIMB_UP, Action.COLLECT), three.plan());
+        assertEquals(Arrays.asList(Action.RIGHT, Action.CLIMB_UP, Action.COLLECT), three.plan());
         assertEquals("right,climbup,collect", three.planText());
 
         // a node in the middle only knows the way up to itself
-        assertEquals(List.of(Action.RIGHT, Action.CLIMB_UP), two.plan());
+        assertEquals(Arrays.asList(Action.RIGHT, Action.CLIMB_UP), two.plan());
         assertEquals("right,climbup", two.planText());
     }
 
