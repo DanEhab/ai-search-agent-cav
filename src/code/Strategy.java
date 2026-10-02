@@ -6,7 +6,8 @@ import java.util.Arrays;
  * The ways we can search. The names are the ones the assignment uses.
  */
 public enum Strategy {
-    UC;   // uniform cost: always carry on from the cheapest node we have
+    UC,   // uniform cost: always carry on from the cheapest node we have
+    ID;   // iterative deepening: depth-limited searches with a limit that grows 0, 1, 2, ...
 
     // the strategy with this name ("UC" gives UC), or an error that lists the ones we have
     public static Strategy fromText(String text) {

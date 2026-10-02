@@ -139,6 +139,38 @@ public class SolveTests {
     }
 
     @Test
+    public void iterativeDeepeningAnswersInTheSameFormat() {
+        String[] parts = CaveExplorer.solve(PDF_EXAMPLE, "ID").split(";");
+
+        assertEquals(4, parts.length);
+        assertTrue(CaveExplorer.solve(PDF_EXAMPLE, "ID").matches("[a-z]+(,[a-z]+)*;\\d+;\\d+;\\d+"));
+        // 8 actions is the fewest there are, and the numbers match what that plan costs
+        assertEquals(8, parts[0].split(",").length);
+        CaveRules rules = new CaveRules(new CaveMap(PDF_EXAMPLE));
+        State end = rules.replay(parts[0]);
+        assertTrue(rules.isGoal(end));
+        assertEquals(rules.livesUsed(end), Integer.parseInt(parts[1]));
+        assertEquals(rules.energyUsed(end), Integer.parseInt(parts[2]));
+    }
+
+    @Test
+    public void theRealCheckerAcceptsEveryIterativeDeepeningAnswer() {
+        assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
+            for (int i = 0; i < PUBLIC_CAVES.length; i++) {
+                String answer = CaveExplorer.solve(PUBLIC_CAVES[i], "ID");
+                if (LIVES_USED[i] == -1) {
+                    assertEquals("No Solution", answer, "public cave number " + i);
+                    continue;
+                }
+                Checker.ValidationResult result = Checker.validateSolution(PUBLIC_CAVES[i], answer);
+
+                assertTrue(result.isValid, "public cave number " + i + ": the checker refuses " + answer
+                        + " (" + result.errorMessage + ")");
+            }
+        });
+    }
+
+    @Test
     public void moreRopeMeansTheAnswerNeedsNoJump() {
         // the PDF example with 3 meters of rope instead of 2
         String[] parts = CaveExplorer.solve("3,4;0,1;100,3;0,3,0,0;4,12,0,0;0,7,23,8;3,2;1,0;", "UC").split(";");
@@ -157,6 +189,7 @@ public class SolveTests {
 
         assertTrue(error.getMessage().contains("XYZ"));
         assertTrue(error.getMessage().contains("UC"));
+        assertTrue(error.getMessage().contains("ID"));
     }
 
     @Test
@@ -164,6 +197,8 @@ public class SolveTests {
         assertThrows(IllegalArgumentException.class, () -> CaveExplorer.solve(PDF_EXAMPLE, "uc"));
         assertThrows(IllegalArgumentException.class, () -> CaveExplorer.solve(PDF_EXAMPLE, ""));
         assertEquals(Strategy.UC, Strategy.fromText("UC"));
+        assertEquals(Strategy.ID, Strategy.fromText("ID"));
+        assertThrows(IllegalArgumentException.class, () -> CaveExplorer.solve(PDF_EXAMPLE, "Id"));
     }
 
     @Test

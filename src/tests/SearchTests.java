@@ -11,8 +11,10 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -55,6 +57,12 @@ public class SearchTests {
         }
     }
 
+    // the fewest actions any plan needs for each of those caves (-1 means the cave cannot be won)
+    private static final int[] FEWEST_ACTIONS = {9, 8, 11, 14, 13, 13, 20, -1, 20};
+
+    private static Node iterativeDeepening(String caveText) {
+        return new Search().run(new CaveExplorer(new CaveMap(caveText)), Strategy.ID);
+    }
     private static Node uniformCost(String caveText) {
         return new Search().run(new CaveExplorer(new CaveMap(caveText)), Strategy.UC);
     }
@@ -232,4 +240,108 @@ public class SearchTests {
             assertEquals(14350, search.nodesExpanded());
         });
     }
-}
+
+    // ---------------------------------------------------------------- iterative deepening
+
+    @Test
+    public void iterativeDeepeningFindsAPdfPlanWithTheFewestActions() {
+        CaveRules rules = new CaveRules(new CaveMap(PDF_EXAMPLE));
+        Node goal = iterativeDeepening(PDF_EXAMPLE);
+
+        assertNotNull(goal);
+        assertTrue(rules.isGoal(goal.state));
+        // no plan for this cave has fewer than 8 actions
+        assertEquals(8, goal.depth);
+        assertEquals(goal.state, rules.replay(goal.planText()));
+    }
+
+    @Test
+    public void iterativeDeepeningGivesNoNodeWhenThereIsNoWay() {
+        assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
+            // the cave of test_plan_uc6, and the PDF example with no rope at all (the key is up a wall)
+            assertNull(iterativeDeepening(PUBLIC_CAVES[7]));
+            assertNull(iterativeDeepening("3,4;0,1;100,0;0,3,0,0;4,12,0,0;0,7,23,8;3,2;1,0;"));
+        });
+    }
+
+    @Test
+    public void everyPublicCaveGetsAPlanWithTheFewestActions() {
+        assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
+            for (int i = 0; i < PUBLIC_CAVES.length; i++) {
+                CaveMap cave = new CaveMap(PUBLIC_CAVES[i]);
+                CaveRules rules = new CaveRules(cave);
+                Search search = new Search();
+                Node goal = search.run(new CaveExplorer(cave), Strategy.ID);
+                String which = "public cave number " + i;
+
+                if (FEWEST_ACTIONS[i] == -1) {
+                    assertNull(goal, which);
+                    continue;
+                }
+                assertNotNull(goal, which);
+                assertTrue(rules.isGoal(goal.state), which);
+                assertEquals(FEWEST_ACTIONS[i], goal.depth, which);
+                assertEquals(goal.state, rules.replay(goal.planText()), which);
+                // fewest actions is not the same as cheapest, but it can never be cheaper than the cheapest
+                assertTrue(goal.pathCost >= CHEAPEST[i], which);
+
+                String answer = goal.planText() + ";" + rules.livesUsed(goal.state) + ";"
+                        + rules.energyUsed(goal.state) + ";" + search.nodesExpanded();
+                Checker.ValidationResult result = Checker.validateSolution(PUBLIC_CAVES[i], answer);
+                assertTrue(result.isValid, which + ": the checker refuses " + answer + " (" + result.errorMessage + ")");
+            }
+        });
+    }
+
+    @Test
+    public void iterativeDeepeningDoesNotPromiseTheCheapestPlan() {
+        // In this cave the shortest plan has 5 actions and costs 26 (climb down twice, collect, climb up, unlock).
+        // A longer plan, walking round through the cheaper caves, costs only 24.
+        String cave = "3,3;2,0;200,3;0,1,8;0,3,9;0,3,8;2,1;2,2;";
+        Node fewestActions = iterativeDeepening(cave);
+        Node cheapest = uniformCost(cave);
+
+        assertEquals(5, fewestActions.depth);
+        assertEquals(24, cheapest.pathCost);
+        assertTrue(fewestActions.pathCost > cheapest.pathCost);
+        assertTrue(cheapest.depth > fewestActions.depth);
+    }
+
+    @Test
+    public void everyRoundStartsOverAndNoStateIsExpandedAgainAtTheSameDepth() {
+        RecordingProblem problem = new RecordingProblem(new CaveMap(PDF_EXAMPLE));
+        Node goal = new Search().run(problem, Strategy.ID);
+
+        // A new round begins whenever the start node (depth 0) is expanded again. Within one round a state
+        // may only be expanded again if we reach it with fewer steps than before.
+        Map<State, Integer> shallowest = new HashMap<>();
+        int rounds = 0;
+        for (Node node : problem.expanded) {
+            if (node.depth == 0) {
+                rounds++;
+                shallowest.clear();
+            }
+            Integer earlier = shallowest.get(node.state);
+            assertTrue(earlier == null || node.depth < earlier, "expanded again too deep: " + node.state);
+            shallowest.put(node.state, node.depth);
+        }
+
+        // the rounds have limits 1, 2, 3 ... up to the depth of the goal (a round with limit 0 expands nothing)
+        assertEquals(goal.depth, rounds);
+    }
+
+    @Test
+    public void theCounterAddsUpAllTheRounds() {
+        RecordingProblem problem = new RecordingProblem(new CaveMap(PDF_EXAMPLE));
+        Search search = new Search();
+        search.run(problem, Strategy.ID);
+
+        assertEquals(problem.expanded.size(), search.nodesExpanded());
+
+        // every round expands the start node again, so we expanded more nodes than there are different states
+        Set<State> different = new HashSet<>();
+        for (Node node : problem.expanded) {
+            different.add(node.state);
+        }
+        assertTrue(different.size() < search.nodesExpanded());
+    }}
