@@ -414,6 +414,27 @@ public class SearchTests {
     }
 
     @Test
+    public void aStarAsksForTheGuessOnlyOnceForEveryStateItQueues() {
+        for (String text : PUBLIC_CAVES) {
+            Map<State, Integer> asked = new HashMap<>();
+            CaveExplorer counting = new CaveExplorer(new CaveMap(text)) {
+                @Override
+                public int heuristic(State state) {
+                    asked.merge(state, 1, Integer::sum);
+                    return super.heuristic(state);
+                }
+            };
+
+            new Search().run(counting, Strategy.AS);
+
+            assertFalse(asked.isEmpty(), text);
+            for (int times : asked.values()) {
+                assertEquals(1, times, text);
+            }
+        }
+    }
+
+    @Test
     public void aGuessThatIsTooBigCanMakeAStarMissTheCheapestPlan() {
         // The PDF example with 3 meters of rope: the cheapest plan costs 65 and needs no jump.
         // This guess says that anyone who has not lost a life yet is 5000 away from the goal. That is
@@ -433,4 +454,5 @@ public class SearchTests {
         assertEquals(65, cheapest.pathCost);
         assertTrue(misled.pathCost > cheapest.pathCost);
         assertTrue(misled.state.lives < State.START_LIVES);
-    }}
+    }
+}

@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 
 /**
  * The general search procedure from the lectures. It works on any GenericSearchProblem,
@@ -25,11 +26,11 @@ public class Search {
         nodesExpanded = 0;
         switch (strategy) {
             case UC:
-                return bestFirst(problem, Comparator.comparingInt(n -> n.pathCost));
+                return bestFirst(problem, n -> n.pathCost);
             case ID:
                 return iterativeDeepening(problem);
             case AS:
-                return bestFirst(problem, Comparator.comparingInt(n -> n.pathCost + problem.heuristic(n.state)));
+                return bestFirst(problem, n -> n.pathCost + problem.heuristic(n.state));
             default:
                 throw new IllegalArgumentException("unknown strategy " + strategy);
         }
@@ -46,23 +47,25 @@ public class Search {
     // That is safe because reaching a state always costs the same, whatever path we took: the cost
     // only depends on the lives and the energy used, and both of those are part of the state.
     // A guess that only looks at the state does not change that.
-    private Node bestFirst(GenericSearchProblem problem, Comparator<Node> order) {
-        PriorityQueue<Node> queue = new PriorityQueue<>(order);
+    // The priority of a node (the smaller, the sooner it is looked at) is worked out once, when the
+    // node is queued. Asking for the guess again on every comparison inside the queue made A* slow.
+    private Node bestFirst(GenericSearchProblem problem, ToIntFunction<Node> priority) {
+        PriorityQueue<Queued> queue = new PriorityQueue<>(Comparator.comparingInt(q -> q.priority));
         Set<State> seen = new HashSet<>();
 
         Node start = problem.initialNode();
-        queue.add(start);
+        queue.add(new Queued(start, priority.applyAsInt(start)));
         seen.add(start.state);
 
         while (!queue.isEmpty()) {
-            Node node = queue.poll();
+            Node node = queue.poll().node;
             if (problem.isGoal(node.state)) {
                 return node;
             }
             nodesExpanded++;
             for (Node child : problem.expand(node)) {
                 if (seen.add(child.state)) {
-                    queue.add(child);
+                    queue.add(new Queued(child, priority.applyAsInt(child)));
                 }
             }
         }
@@ -115,4 +118,16 @@ public class Search {
             }
         }
         return null;
-    }}
+    }
+
+    // a node waiting in the queue, together with the priority it was queued with
+    private static class Queued {
+        final Node node;
+        final int priority;
+
+        Queued(Node node, int priority) {
+            this.node = node;
+            this.priority = priority;
+        }
+    }
+}
